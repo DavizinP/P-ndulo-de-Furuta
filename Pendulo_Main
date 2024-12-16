@@ -1,0 +1,95 @@
+#include <ESP32Encoder.h>
+
+// Configuração dos pinos dos encoders
+#define PINO_ENCODER_A_1 25  // Canal A do primeiro encoder
+#define PINO_ENCODER_B_1 26  // Canal B do primeiro encoder
+#define PINO_ENCODER_A_2 16  // Canal A do segundo encoder
+#define PINO_ENCODER_B_2 17  // Canal B do segundo encoder
+
+// Criação dos objetos para os encoders
+ESP32Encoder encoder1;
+ESP32Encoder encoder2;
+
+// Variáveis globais para Encoder 1
+int32_t posicaoAnterior1 = 0; // Última posição do Encoder 1
+float anguloAnterior1 = 0;    // Último ângulo do Encoder 1
+float velocidadeAngular1 = 0; // Velocidade angular do Encoder 1
+
+// Variáveis globais para Encoder 2
+int32_t posicaoAnterior2 = 0; // Última posição do Encoder 2
+float anguloAnterior2 = 0;    // Último ângulo do Encoder 2
+float velocidadeAngular2 = 0; // Velocidade angular do Encoder 2
+
+// Controle de tempo
+unsigned long tempoAnterior = 0;
+
+// Número de pulsos por revolução do encoder
+#define PULSOS_POR_REVOLUCAO 4800
+
+void setup() {
+  Serial.begin(115200);
+
+  // Inicialização dos encoders
+  encoder1.attachFullQuad(PINO_ENCODER_A_1, PINO_ENCODER_B_1);
+  encoder2.attachFullQuad(PINO_ENCODER_A_2, PINO_ENCODER_B_2);
+  encoder1.clearCount();
+  encoder2.clearCount();
+
+  Serial.println("Encoders inicializados!");
+  tempoAnterior = millis();
+}
+
+void loop() {
+  unsigned long tempoAtual = millis();
+  float intervaloTempo = (tempoAtual - tempoAnterior) / 1000.0; // Intervalo de tempo em segundos
+
+  // Processa Encoder 1 e atualiza a velocidade angular
+  velocidadeAngular1 = processarEncoder(encoder1, posicaoAnterior1, anguloAnterior1, intervaloTempo, "Encoder 1");
+
+  // Processa Encoder 2 e atualiza a velocidade angular
+  velocidadeAngular2 = processarEncoder(encoder2, posicaoAnterior2, anguloAnterior2, intervaloTempo, "Encoder 2");
+
+  // Atualiza o tempo anterior
+  tempoAnterior = tempoAtual;
+
+  delay(50); // Atualiza a cada 50 ms
+}
+
+// Função para processar um encoder e retornar a velocidade angular
+float processarEncoder(ESP32Encoder &encoder, int32_t &posicaoAnterior, float &anguloAnterior, float intervaloTempo, const char *nomeEncoder) {
+  int32_t posicaoAtual = encoder.getCount();        // Lê a posição atual do encoder
+  float anguloGraus = mapearAngulo(posicaoAtual);   // Calcula o ângulo em graus
+  float anguloRadianos = anguloGraus * DEG_TO_RAD;  // Converte o ângulo para radianos
+  float velocidadeAngular = calcularVelocidadeAngular(anguloAnterior, anguloRadianos, intervaloTempo); // Calcula a velocidade angular
+
+  // Determina a direção do movimento
+  const char *direcao = (posicaoAtual > posicaoAnterior) ? "Horário" : "Anti-horário";
+
+  // Atualiza os valores globais
+  posicaoAnterior = posicaoAtual;
+  anguloAnterior = anguloRadianos;
+
+  // Imprime os dados no monitor serial
+  Serial.print(nomeEncoder);
+  Serial.print(" - Ângulo: ");
+  Serial.print(anguloGraus); // Exibe o ângulo em graus
+  Serial.print("° | Direção: ");
+  Serial.print(direcao);
+  Serial.print(" | Velocidade Angular: ");
+  Serial.print(velocidadeAngular, 2); // Exibe a velocidade angular em rad/s
+  Serial.println(" rad/s");
+
+  return velocidadeAngular; // Retorna a velocidade angular para uso no controle
+}
+
+// Função para calcular a velocidade angular (rad/s)
+float calcularVelocidadeAngular(float anguloAnterior, float anguloAtual, float intervaloTempo) {
+  return (anguloAtual - anguloAnterior) / intervaloTempo;
+}
+
+// Função para mapear a contagem do encoder para ângulo de -179° a 179°
+float mapearAngulo(int32_t contagem) {
+  float angulo = (contagem % PULSOS_POR_REVOLUCAO) * (360.0 / PULSOS_POR_REVOLUCAO); // Converte pulsos para graus
+  if (angulo > 179) angulo -= 360; // Ajusta para a faixa -179 a 179
+  return angulo;
+}
